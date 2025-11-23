@@ -6,16 +6,17 @@ import textwrap
 import io
 from fpdf import FPDF
 
+
 # ------------------ PAGE CONFIG ------------------
 st.set_page_config(page_title="Cover Letter Generator", layout="wide")
-st.title("📄 AI Cover Letter Generator (Paste-Safe Mode)")
+st.title("📄 AI Cover Letter Generator (Paste-Only, Safe Mode)")
 
 
 # ------------------ OPENAI CLIENT ------------------
 def get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        st.error("OPENAI_API_KEY environment variable is missing.")
+        st.error("❌ OPENAI_API_KEY environment variable is missing.")
         return None
     return OpenAI(api_key=api_key)
 
@@ -39,32 +40,42 @@ def extract_role(job_description):
     return None
 
 
-
-# ------------------ PDF Export ------------------
-def create_pdf(text):
+# ------------------ PDF CREATOR (UNICODE SAFE) ------------------
+def create_pdf(text: str) -> bytes:
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Arial", size=11)
+
+    # Load Unicode font (must be installed via Docker)
+    pdf.add_font("DejaVu", "", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", uni=True)
+    pdf.set_font("DejaVu", size=11)
 
     for line in text.split("\n"):
-        for seg in textwrap.wrap(line, 90):
+        wrapped = textwrap.wrap(line, width=90) or [""]
+        for seg in wrapped:
             pdf.cell(0, 6, txt=seg, ln=1)
 
     buffer = io.BytesIO()
     pdf.output(buffer)
     buffer.seek(0)
-    return buffer
+    return buffer.read()
 
 
 # ------------------ SAFETY NOTICE ------------------
 with st.expander("⚠ BEFORE YOU START"):
     st.warning(
         """
-**IMPORTANT:**
-- Paste ONLY resume text *without personal details*
-- Remove phone number, email, address, LinkedIn
-- This tool does NOT store your text, but protect yourself
+**IMPORTANT — Privacy Safety**
+
+🔹 Paste ONLY resume text after removing:  
+- Full name  
+- Phone number  
+- Email  
+- LinkedIn / Address  
+
+🔹 Do NOT upload entire resume files.
+
+This app uses session-only processing and does not store your data.
 """
     )
 
@@ -73,15 +84,16 @@ with st.expander("⚠ BEFORE YOU START"):
 st.subheader("📌 Step 1: Paste Job Description (Must Include Role + Company)")
 
 job_description = st.text_area(
-    "Paste complete job description:",
+    "Paste full job description:",
     height=300,
-    placeholder="Paste JD here with full role title + company name..."
+    placeholder="Paste JD here including role title + company name..."
 )
 
 # Extract role automatically
 role_name = extract_role(job_description) if job_description else None
 
-# Warn if missing company mention later when input given
+
+# ------------------ SIDEBAR INPUTS ------------------
 st.sidebar.header("Job Details")
 
 company_name = st.sidebar.text_input(
@@ -89,31 +101,29 @@ company_name = st.sidebar.text_input(
     placeholder="e.g., Adobe, Deloitte, Amazon"
 )
 
-# Company validation
-if job_description and company_name:
-    if company_name.lower() not in job_description.lower():
-        st.warning("⚠ Company name not found in JD. Please paste full JD text.")
-
-
-# ------------------ Editable Role Name ------------------
 role_input = st.sidebar.text_input(
     "Role Title (Auto-Detected)",
     value=role_name if role_name else "",
-    placeholder="e.g., Senior Marketing Analyst"
+    placeholder="e.g., Senior Analyst"
 )
 
-# Warn if role didn't get extracted
+
+# ------------------ VALIDATIONS ------------------
 if job_description and not role_name:
-    st.error("❌ Role title not detected in JD. Please include it or type it manually.")
+    st.error("❌ Role title NOT detected in job description. Please include it or type manually.")
+
+if job_description and company_name:
+    if company_name.lower() not in job_description.lower():
+        st.warning("⚠ Company name NOT found in JD. Paste full JD including company title.")
 
 
 # ------------------ STEP 2: RESUME TEXT ------------------
-st.subheader("📌 Step 2: Paste Screenshot Text (No PII)")
+st.subheader("📌 Step 2: Paste Resume Screenshot Text (NO PII)")
 
 resume_text = st.text_area(
-    "Paste ONLY bullet points & achievements (no name/email/phone):",
-    height=280,
-    placeholder="Copy text from resume screenshot here…"
+    "Paste ONLY bullet points & achievements:",
+    height=250,
+    placeholder="Screenshot → copy text → paste here…"
 )
 
 
@@ -123,24 +133,26 @@ generate = st.button("🚀 Generate Cover Letter")
 if generate:
 
     if not job_description.strip():
-        st.error("Paste job description first.")
+        st.error("❌ Paste job description first.")
     elif not company_name.strip():
-        st.error("Enter company name.")
+        st.error("❌ Enter company name.")
     elif not role_input.strip():
-        st.error("Role title required. Ensure it is present in JD.")
+        st.error("❌ Role title required.")
     elif not resume_text.strip():
-        st.error("Paste resume text.")
+        st.error("❌ Paste resume content.")
     else:
+
         client = get_openai_client()
 
         system_msg = """
 You are a professional cover letter writer.
 
 Rules:
-- Use only information provided in resume text.
-- Do NOT add names, phone numbers, or emails.
-- If skill mismatch, bridge with transferable experience.
+- Use ONLY experience from resume text provided.
+- DO NOT add personal contact info, names, phone numbers, or emails.
+- If a required skill is missing, bridge using transferable experience.
 - Tone: professional, concise, impact-driven.
+- Max 5 short paragraphs.
 """
 
         user_msg = f"""
@@ -153,11 +165,11 @@ COMPANY: {company_name}
 JOB DESCRIPTION:
 {job_description}
 
-Write a cover letter addressed to Hiring Manager.
-Do not fabricate experience.
+Write a cover letter addressed to "Hiring Manager".
+Do NOT fabricate experience or add personal info.
 """
 
-        with st.spinner("Writing your cover letter..."):
+        with st.spinner("✍ Generating your cover letter..."):
             response = client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=[
@@ -168,9 +180,11 @@ Do not fabricate experience.
             )
 
         letter = response.choices[0].message.content
-        st.success("Cover letter generated!")
+        st.success("🎉 Cover letter generated!")
 
-        st.subheader("📎 Cover Letter Output")
+
+        # ------------------ OUTPUT ------------------
+        st.subheader("📎 Final Cover Letter")
         st.write(letter)
 
         pdf_bytes = create_pdf(letter)
