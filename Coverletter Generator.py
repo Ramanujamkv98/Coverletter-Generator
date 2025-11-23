@@ -9,7 +9,30 @@ from fpdf import FPDF
 
 # ------------------ PAGE CONFIG ------------------
 st.set_page_config(page_title="Cover Letter Generator", layout="wide")
-st.title("📄 AI Cover Letter Generator (Paste-Only, Safe Mode)")
+
+
+# ------------------ BRANDING + THEME ------------------
+st.markdown("""
+<style>
+body {
+    background-color: #f8f9fc;
+    font-family: 'Helvetica', sans-serif;
+}
+.sidebar .sidebar-content {
+    background-color: #ffffff;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+st.markdown("""
+### 🚀 **AI Cover Letter Generator**
+Built by **Ramanujamkv98**
+
+Generate tailored cover letters from job descriptions + resume text.
+Remove personal info before entering.
+---
+""")
 
 
 # ------------------ OPENAI CLIENT ------------------
@@ -31,25 +54,31 @@ def extract_role(job_description):
         r"[A-Z][A-Za-z]+ Specialist[ A-Za-z0-9,\-]*",
         r"[A-Z][A-Za-z]+ Scientist[ A-Za-z0-9,\-]*",
     ]
-
     for pattern in patterns:
         match = re.search(pattern, job_description)
         if match:
             return match.group().strip()
-
     return None
 
 
 # ------------------ PDF CREATOR (UNICODE SAFE) ------------------
-def create_pdf(text: str) -> bytes:
+def create_pdf(text: str, full_name: str) -> bytes:
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Load Unicode font (must be installed via Docker)
-    pdf.add_font("DejaVu", "", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", uni=True)
+    # Load embedded unicode font from local file
+    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
     pdf.set_font("DejaVu", size=11)
 
+    # Add Name Header
+    if full_name:
+        pdf.set_font("DejaVu", size=14)
+        pdf.cell(0, 10, txt=full_name, ln=1)
+        pdf.ln(5)
+
+    # Body content
+    pdf.set_font("DejaVu", size=11)
     for line in text.split("\n"):
         wrapped = textwrap.wrap(line, width=90) or [""]
         for seg in wrapped:
@@ -61,27 +90,26 @@ def create_pdf(text: str) -> bytes:
     return buffer.read()
 
 
-# ------------------ SAFETY NOTICE ------------------
+# ------------------ PRIVACY WARNING ------------------
 with st.expander("⚠ BEFORE YOU START"):
     st.warning(
         """
 **IMPORTANT — Privacy Safety**
 
 🔹 Paste ONLY resume text after removing:  
-- Full name  
+- Name  
 - Phone number  
 - Email  
 - LinkedIn / Address  
-
-🔹 Do NOT upload entire resume files.
 
 This app uses session-only processing and does not store your data.
 """
     )
 
 
-# ------------------ STEP 1: JOB DESCRIPTION ------------------
-st.subheader("📌 Step 1: Paste Job Description (Must Include Role + Company)")
+# ------------------ INPUT SECTION ------------------
+
+st.subheader("📌 Step 1: Paste Job Description")
 
 job_description = st.text_area(
     "Paste full job description:",
@@ -89,12 +117,17 @@ job_description = st.text_area(
     placeholder="Paste JD here including role title + company name..."
 )
 
-# Extract role automatically
 role_name = extract_role(job_description) if job_description else None
 
 
-# ------------------ SIDEBAR INPUTS ------------------
-st.sidebar.header("Job Details")
+# ------------------ SIDEBAR FIELDS ------------------
+
+st.sidebar.header("🔧 Customize Output")
+
+full_name = st.sidebar.text_input(
+    "Your Name (For PDF Header)",
+    placeholder="e.g., Sajal Jain"
+)
 
 company_name = st.sidebar.text_input(
     "Company Name",
@@ -110,15 +143,15 @@ role_input = st.sidebar.text_input(
 
 # ------------------ VALIDATIONS ------------------
 if job_description and not role_name:
-    st.error("❌ Role title NOT detected in job description. Please include it or type manually.")
+    st.error("❌ Role title NOT detected in job description. Please include it or enter manually.")
 
 if job_description and company_name:
     if company_name.lower() not in job_description.lower():
         st.warning("⚠ Company name NOT found in JD. Paste full JD including company title.")
 
 
-# ------------------ STEP 2: RESUME TEXT ------------------
-st.subheader("📌 Step 2: Paste Resume Screenshot Text (NO PII)")
+# ------------------ RESUME INPUT ------------------
+st.subheader("📌 Step 2: Paste Resume Bullet Points (NO PII)")
 
 resume_text = st.text_area(
     "Paste ONLY bullet points & achievements:",
@@ -130,8 +163,8 @@ resume_text = st.text_area(
 # ------------------ GENERATE BUTTON ------------------
 generate = st.button("🚀 Generate Cover Letter")
 
-if generate:
 
+if generate:
     if not job_description.strip():
         st.error("❌ Paste job description first.")
     elif not company_name.strip():
@@ -141,7 +174,6 @@ if generate:
     elif not resume_text.strip():
         st.error("❌ Paste resume content.")
     else:
-
         client = get_openai_client()
 
         system_msg = """
@@ -187,7 +219,7 @@ Do NOT fabricate experience or add personal info.
         st.subheader("📎 Final Cover Letter")
         st.write(letter)
 
-        pdf_bytes = create_pdf(letter)
+        pdf_bytes = create_pdf(letter, full_name)
 
         st.download_button(
             "⬇ Download PDF",
