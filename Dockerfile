@@ -1,12 +1,14 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
+# Install unicode font & dependencies
 RUN apt-get update && apt-get install -y \
-    fonts-dejavu \
+    fonts-dejavu-core \
+    fonts-dejavu-extra \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
-    
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
