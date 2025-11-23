@@ -67,18 +67,17 @@ def create_pdf(text: str, full_name: str) -> bytes:
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Load embedded unicode font from local file
-    pdf.add_font("DejaVu", "", "DejaVuSans.ttf", uni=True)
-    pdf.set_font("DejaVu", size=11)
+    # Load bundled unicode font
+    pdf.add_font("Noto", "", "NotoSans-Regular.ttf", uni=True)
+    pdf.set_font("Noto", size=11)
 
-    # Add Name Header
+    # Add name header
     if full_name:
-        pdf.set_font("DejaVu", size=14)
+        pdf.set_font("Noto", size=14)
         pdf.cell(0, 10, txt=full_name, ln=1)
         pdf.ln(5)
 
-    # Body content
-    pdf.set_font("DejaVu", size=11)
+    pdf.set_font("Noto", size=11)
     for line in text.split("\n"):
         wrapped = textwrap.wrap(line, width=90) or [""]
         for seg in wrapped:
@@ -91,20 +90,15 @@ def create_pdf(text: str, full_name: str) -> bytes:
 
 
 # ------------------ PRIVACY WARNING ------------------
-with st.expander("⚠ BEFORE YOU START"):
-    st.warning(
-        """
-**IMPORTANT — Privacy Safety**
+with st.expander("📌 IMPORTANT — Privacy Reminder"):
+    st.info("""
+Paste resume text WITHOUT:
+- Phone numbers
+- Email / LinkedIn
+- Full name
+- Address
+""")
 
-🔹 Paste ONLY resume text after removing:  
-- Name  
-- Phone number  
-- Email  
-- LinkedIn / Address  
-
-This app uses session-only processing and does not store your data.
-"""
-    )
 
 
 # ------------------ INPUT SECTION ------------------
@@ -117,17 +111,16 @@ job_description = st.text_area(
     placeholder="Paste JD here including role title + company name..."
 )
 
-role_name = extract_role(job_description) if job_description else None
 
 
 # ------------------ SIDEBAR FIELDS ------------------
 
 st.sidebar.header("🔧 Customize Output")
 
-full_name = st.sidebar.text_input(
-    "Your Name (For PDF Header)",
-    placeholder="e.g., Sajal Jain"
-)
+if full_name:
+    pdf.set_font("Noto", size=14)
+    pdf.cell(0, 10, txt=full_name, ln=1)
+
 
 company_name = st.sidebar.text_input(
     "Company Name",
@@ -135,19 +128,13 @@ company_name = st.sidebar.text_input(
 )
 
 role_input = st.sidebar.text_input(
-    "Role Title (Auto-Detected)",
-    value=role_name if role_name else "",
+    "Role Title",
     placeholder="e.g., Senior Analyst"
 )
 
 
-# ------------------ VALIDATIONS ------------------
-if job_description and not role_name:
-    st.error("❌ Role title NOT detected in job description. Please include it or enter manually.")
 
-if job_description and company_name:
-    if company_name.lower() not in job_description.lower():
-        st.warning("⚠ Company name NOT found in JD. Paste full JD including company title.")
+# ------------------ VALIDATIONS ------------------
 
 
 # ------------------ RESUME INPUT ------------------
